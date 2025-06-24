@@ -1,9 +1,32 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+/*
+ ================================================================
+ File Name: sensor_data_processor.c
+ Language: C
+ Author: Tannaz Chowdhury
+ Property of: HPVDT (Human Powered Vehicles Design Team)
+ 
+ Description: 
+ This program processes ultrasonic sensor data from text files,
+ applies median filtering for noise reduction, and generates
+ comparison graphs showing original vs filtered data.
+ 
+ The program is designed to handle multiple sensors with up to
+ 10,000 readings each, applying configurable median filters
+ and creating visualization outputs via gnuplot.
+ ================================================================
+ */
+
+#include <stdio.h>      // Standard I/O functions (printf, fopen, etc.)
+#include <stdlib.h>     // Standard library functions (malloc, free, system, etc.)
+#include <string.h>     // String manipulation functions
 
 #define MAX_READINGS 10000
 #define MAX_SENSORS 10
+
+
+/*================================================================
+  DATA STRUCTURES
+  ================================================================ */
 
 // Simple structure to hold readings - just arrays of doubles
 typedef struct {
@@ -13,13 +36,31 @@ typedef struct {
     int total_readings;                             // Total across all sensors
 } SensorArrays;
 
+
+
+/*================================================================
+  FUNCTION DECLARATIONS AND IMPLEMENTATIONS
+  ================================================================*/
+
+/*Function: parse_sensor_file
+  Inputs: 
+    - filename: Path to the sensor data text file
+  
+  Returns: 
+    - Pointer to SensorArrays structure containing parsed data
+    - NULL if file cannot be opened or memory allocation fails
+  
+  Purpose: 
+    Reads sensor data from formatted text file and organizes it into arrays
+  Expected Format: 
+    "I (timestamp) AJSR04M: Sensor X: value cm" */
+
 // Parse file and return simple arrays
 SensorArrays* parse_sensor_file(const char *filename) {
     FILE *file = fopen(filename, "r"); // read file
         if (!file) {                                                // check if file will open or crash
             fprintf(stderr, "Error opening file: %s\n", filename);
-            return NULL;
-        }
+            return NULL;}
     
     SensorArrays *arrays = calloc(1, sizeof(SensorArrays)); // create space to hold data
     char line[256]; // space per line to read numbers 
@@ -42,61 +83,71 @@ SensorArrays* parse_sensor_file(const char *filename) {
                     
                     if (sensor_num > arrays->max_sensor_id) { // keep track of the highest sensor number, modular
                         arrays->max_sensor_id = sensor_num;
-                    }
-                }
-            }
-        }
-    }
+                    }}}}}
     
     fclose(file); // close the file
-    return arrays;
-}
+    return arrays;}
+
+
+/*
+  Function: get_sensor_array
+  Inputs:
+    - arrays: Pointer to SensorArrays structure
+    - sensor_number: Sensor ID 
+  Returns:
+    - Pointer to the specific sensor's data array
+    - NULL if invalid sensor number
+  Purpose:
+    Provides direct access to a sensor's data array for external processing*/
 
 // Get pointer to specific sensor's data array (for easy graphing)
 double* get_sensor_array(SensorArrays *arrays, int sensor_number) {
     int sensor_idx = sensor_number - 1;
     if (sensor_idx >= 0 && sensor_idx < MAX_SENSORS) {
-        return arrays->sensor_data[sensor_idx];
-    }
-    return NULL;
-}
+        return arrays->sensor_data[sensor_idx];}
+    return NULL;}
+
+
+
+/*
+  Function: get_sensor_count
+  Inputs:
+    - arrays: Pointer to SensorArrays structure
+    - sensor_number: Sensor ID (1-based numbering)
+  Returns:
+    - Number of readings for the specified sensor
+    - 0 if invalid sensor number
+  Purpose:
+    Returns the count of valid readings for a specific sensor*/
 
 // Get count of readings for a sensor
 int get_sensor_count(SensorArrays *arrays, int sensor_number) {
     int sensor_idx = sensor_number - 1;
     if (sensor_idx >= 0 && sensor_idx < MAX_SENSORS) {
-        return arrays->reading_counts[sensor_idx];
-    }
-    return 0;
-}
-
-/* Print summary
-void print_summary(SensorArrays *arrays) {
-    printf("Found %d sensors with %d total readings:\n", 
-           arrays->max_sensor_id, arrays->total_readings);
-    
-    for (int i = 0; i < arrays->max_sensor_id; i++) {
-        if (arrays->reading_counts[i] > 0) {
-            printf("Sensor %d: %d readings (%.2f to %.2f)\n", 
-                   i + 1, 
-                   arrays->reading_counts[i],
-                   arrays->sensor_data[i][0],
-                   arrays->sensor_data[i][arrays->reading_counts[i] - 1]);
-        }
-    }
-}*/
+        return arrays->reading_counts[sensor_idx];}
+    return 0;}
 
 
 
-// median filter function, multiple filters-- matlab  
 
-/ Helper function to find median of an array
+
+/*
+  Function: find_median
+  Inputs:
+    - arr: Array of double values
+    - size: Number of elements in the array
+  Returns:
+    - Median value of the array
+  Purpose:
+    Calculates the median value of an array using bubble sort
+    (Creates a copy to avoid modifying original data)*/
+
+//Helper function to find median of an array
 double find_median(double *arr, int size) {
     // Create a copy to sort (don't modify original)
     double *temp = malloc(size * sizeof(double));
     for (int i = 0; i < size; i++) {
-        temp[i] = arr[i];
-    }
+        temp[i] = arr[i];}
     
     // Simple bubble sort (fine for small window sizes)
     for (int i = 0; i < size - 1; i++) {
@@ -104,10 +155,7 @@ double find_median(double *arr, int size) {
             if (temp[j] > temp[j + 1]) {
                 double swap = temp[j];
                 temp[j] = temp[j + 1];
-                temp[j + 1] = swap;
-            }
-        }
-    }
+                temp[j + 1] = swap;}}}
     
     double median;
     if (size % 2 == 0) {
@@ -115,12 +163,24 @@ double find_median(double *arr, int size) {
         median = (temp[size/2 - 1] + temp[size/2]) / 2.0;
     } else {
         // Odd number of elements - take the middle one
-        median = temp[size/2];
-    }
+        median = temp[size/2];}
     
     free(temp);
-    return median;
-}
+    return median;}
+
+
+
+/*
+  Function: apply_median_filter
+  Inputs:
+    - arrays: Pointer to SensorArrays structure
+    - sensor_number: Sensor ID to filter (1-based)
+    - window_size: Size of median filter window (must be odd, >= 3)
+    - iterations: Number of times to apply the filter
+  Returns: void
+  Purpose:
+    Applies median filtering to reduce noise in sensor data
+    Replaces each data point with median of surrounding window*/
 
 // Apply median filter to a sensor's data
 void apply_median_filter(SensorArrays *arrays, int sensor_number, int window_size, int iterations) {
@@ -129,24 +189,20 @@ void apply_median_filter(SensorArrays *arrays, int sensor_number, int window_siz
     // Validate inputs
     if (sensor_idx < 0 || sensor_idx >= MAX_SENSORS) {
         printf("Error: Invalid sensor number %d\n", sensor_number);
-        return;
-    }
+        return;}
     
     if (arrays->reading_counts[sensor_idx] == 0) {
         printf("Error: No data for sensor %d\n", sensor_number);
-        return;
-    }
+        return;}
     
     if (window_size < 3 || window_size % 2 == 0) {
         printf("Error: Window size must be odd and >= 3. Using window_size = 3\n");
-        window_size = 3;
-    }
+        window_size = 3;}
     
     int data_count = arrays->reading_counts[sensor_idx];
     if (window_size > data_count) {
         printf("Error: Window size (%d) larger than data count (%d)\n", window_size, data_count);
-        return;
-    }
+        return;}
     
     printf("Applying median filter to Sensor %d: window=%d, iterations=%d\n", 
            sensor_number, window_size, iterations);
@@ -169,47 +225,50 @@ void apply_median_filter(SensorArrays *arrays, int sensor_number, int window_siz
                 for (int j = 0; j < window_size; j++) {
                     window[j] = arrays->sensor_data[sensor_idx][i - half_window + j];
                 }
-                filtered[i] = find_median(window, window_size);
-            }
-        }
+                filtered[i] = find_median(window, window_size); }}
         
         // Copy filtered data back to original array
         for (int i = 0; i < data_count; i++) {
-            arrays->sensor_data[sensor_idx][i] = filtered[i];
-        }
+            arrays->sensor_data[sensor_idx][i] = filtered[i];}
         
         free(filtered);
         
-        printf("  Iteration %d complete\n", iter + 1);
-    }
+        printf("  Iteration %d complete\n", iter + 1);}
     
-    printf("Median filtering complete for Sensor %d\n", sensor_number);
-}
+    printf("Median filtering complete for Sensor %d\n", sensor_number);}
 
+
+/**
+  Function: graph_sensors
+  Inputs:
+    - arrays: Pointer to SensorArrays structure
+    - sensor_number: Sensor ID to graph (1-based)
+    - window_size: Window size for median filter
+    - iterations: Number of filter iterations
+  Returns: void
+  Purpose:
+    Creates comparison graphs of original vs filtered sensor data
+    Saves data files and generates gnuplot scripts for visualization*/
 
 // graph data functions
-
-void graph_sensor_simple(SensorArrays *arrays, int sensor_number, int window_size, int iterations) {
+void graph_sensors(SensorArrays *arrays, int sensor_number, int window_size, int iterations) {
     int sensor_idx = sensor_number - 1;
     
     // Validate inputs
     if (sensor_idx < 0 || sensor_idx >= MAX_SENSORS) {
         printf("Error: Invalid sensor number %d\n", sensor_number);
-        return;
-    }
+        return;}
     
     if (arrays->reading_counts[sensor_idx] == 0) {
         printf("Error: No data for sensor %d\n", sensor_number);
-        return;
-    }
+        return;}
     
     int data_count = arrays->reading_counts[sensor_idx];
     
     // Create a copy of original data before filtering
     double *original_data = malloc(data_count * sizeof(double));
     for (int i = 0; i < data_count; i++) {
-        original_data[i] = arrays->sensor_data[sensor_idx][i];
-    }
+        original_data[i] = arrays->sensor_data[sensor_idx][i];}
     
     // Apply median filter
     apply_median_filter(arrays, sensor_number, window_size, iterations);
@@ -225,16 +284,14 @@ void graph_sensor_simple(SensorArrays *arrays, int sensor_number, int window_siz
     if (!orig_file || !filt_file) {
         printf("Error: Could not create data files\n");
         free(original_data);
-        return;
-    }
+        return;}
     
     fprintf(orig_file, "# Time(index) Original_Value(cm)\n");
     fprintf(filt_file, "# Time(index) Filtered_Value(cm)\n");
     
     for (int i = 0; i < data_count; i++) {
         fprintf(orig_file, "%d %.3f\n", i, original_data[i]);
-        fprintf(filt_file, "%d %.3f\n", i, arrays->sensor_data[sensor_idx][i]);
-    }
+        fprintf(filt_file, "%d %.3f\n", i, arrays->sensor_data[sensor_idx][i]);}
     
     fclose(orig_file);
     fclose(filt_file);
@@ -275,10 +332,31 @@ void graph_sensor_simple(SensorArrays *arrays, int sensor_number, int window_siz
         } else {
             printf("Gnuplot script created: %s\n", script_filename);
             printf("Run 'gnuplot %s' to generate the graph\n", script_filename);
-        }
-    }
+        }}
     
-    free(original_data);
-}
+    free(original_data);}
+
+// EXECUTE 
+
+int main() {
+    // Parse the sensor data file
+    SensorArrays *arrays = parse_sensor_file("sensor_parabola_test.txt");
+    
+    if (!arrays) {
+        printf("Failed to parse sensor data file\n");
+        return 1;}
+    
+    printf("Successfully loaded sensor data\n");
+    printf("Found %d sensors with %d total readings\n", 
+           arrays->max_sensor_id, arrays->total_readings);
+    
+    // Graph both sensors with different filter settings
+    graph_sensors(arrays, 1, 7, 3);  // window=5, iterations=2
+    
+    //graph_sensors(arrays, 2, 5, 2);  // window=5, iterations=2
+    
+    // Clean up
+    free(arrays);
+    return 0;}
 
 
